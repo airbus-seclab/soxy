@@ -9,7 +9,7 @@ license-file = "../LICENSE"
 [dependencies]
 common = { path = "../common", features = [ "frontend" ] }
 crossbeam-channel = "0"
-dirs = "6"
+dirs = "7"
 libloading = "0"
 log = { version = "0", optional = true }
 serde = { version = "1", default-features = false, features = [ "derive", "std" ] }
@@ -17,13 +17,12 @@ toml = { version = "1", default-features = false, features = [ "display", "parse
 
 [target.'cfg(windows)'.dependencies]
 soxyreg = { path = "../soxyreg", optional = true }
-windows = { version = "0", features = [
+windows = { version = "0.62", default-features = false, features = [
 "Win32_System_Com",
 "Win32_System_Console",
 "Win32_System_RemoteDesktop",
 ] }
-windows-core = { version = "0", optional = true }
-windows-implement = { version = "0", optional = true }
+windows-core = { version = "0.62", optional = true, default-features = false, features = [ "std" ] }
 
 [build-dependencies]
 bindgen = "0"
@@ -59,5 +58,5 @@ service-ftp = [ "common/service-ftp" ]
 service-input = [ "common/service-input" ]
 service-socks5 = [ "common/service-socks5" ]
 service-stage0 = [ "common/service-stage0" ]
-dvc = [ "dep:soxyreg", "dep:windows-core", "dep:windows-implement" ]
+dvc = [ "dep:soxyreg", "dep:windows-core" ]
 svc = [ ]
