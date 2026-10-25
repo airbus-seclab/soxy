@@ -2,6 +2,7 @@ use clap::Parser;
 use std::{env, path};
 
 mod dvc;
+mod horizon;
 mod svc;
 
 #[derive(Parser)]
@@ -16,13 +17,56 @@ struct Args {
 #[derive(clap::ValueEnum, Clone)]
 enum Mode {
     Dvc,
+    Horizon,
     Svc,
 }
 
 #[derive(clap::Subcommand)]
 enum Operation {
     Register { dll: String },
-    Unregister,
+    /// The DLL path is only needed (and only used) by the `horizon` mode: it
+    /// tells which entry to remove from the Horizon Client
+    /// `VirtualChannelDLLs` list.
+    Unregister { dll: Option<String> },
+}
+
+/// Validates the DLL path given on the command line and makes it absolute, as
+/// the registry consumers expect.
+fn absolute_dll_path(dll: &str) -> Result<String, String> {
+    let path = path::Path::new(dll);
+
+    if !path.exists() {
+        return Err("invalid DLL path".to_string());
+    }
+
+    if !path.is_file() {
+        return Err("given path is not a file".to_string());
+    }
+
+    let path = if path.is_absolute() {
+        path::PathBuf::from(path)
+    } else {
+        let curdir = env::current_dir().map_err(|e| format!("invalid current dir: {e}"))?;
+        curdir.join(path)
+    };
+
+    path.as_os_str()
+        .to_str()
+        .map(str::to_string)
+        .ok_or_else(|| "DLL path is not valid UTF-8".to_string())
+}
+
+fn register_dll(dll: &str) -> Option<String> {
+    match absolute_dll_path(dll) {
+        Ok(path) => {
+            println!("DLL path = {path}");
+            Some(path)
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            None
+        }
+    }
 }
 
 fn main() {
@@ -30,63 +74,41 @@ fn main() {
 
     match (args.operation, args.mode) {
         (Operation::Register { dll }, Mode::Dvc) => {
-            let path = path::Path::new(&dll);
-
-            if !path.exists() {
-                eprintln!("invalid DLL path");
-                return;
+            if let Some(path) = register_dll(&dll) {
+                dvc::register(&path);
             }
-
-            if !path.is_file() {
-                eprintln!("given path is not a file");
-                return;
-            }
-
-            let path = if path.is_absolute() {
-                path::PathBuf::from(path)
-            } else {
-                let curdir = env::current_dir().expect("invalid current dir");
-                curdir.join(path)
-            };
-
-            let path = path.as_os_str().to_str().unwrap();
-
-            println!("DLL path = {path}");
-
-            dvc::register(path);
         }
-        (Operation::Unregister, Mode::Dvc) => dvc::unregister(),
+        (Operation::Unregister { .. }, Mode::Dvc) => dvc::unregister(),
+        (Operation::Register { dll }, Mode::Horizon) => {
+            if let Some(path) = register_dll(&dll) {
+                horizon::register(&path);
+            }
+        }
+        (Operation::Unregister { dll }, Mode::Horizon) => match dll {
+            Some(dll) => {
+                if let Some(path) = register_dll(&dll) {
+                    horizon::unregister(&path);
+                }
+            }
+            None => eprintln!(
+                "`horizon unregister` needs the DLL path: it tells which entry to \
+                 remove from the Horizon Client VirtualChannelDLLs list"
+            ),
+        },
         (Operation::Register { dll }, Mode::Svc) => {
-            let path = path::Path::new(&dll);
+            if let Some(path) = register_dll(&dll) {
+                let file_name = path::Path::new(&path)
+                    .file_name()
+                    .and_then(std::ffi::OsStr::to_str)
+                    .unwrap_or("soxy.dll");
 
-            if !path.exists() {
-                eprintln!("invalid DLL path");
-                return;
+                println!(
+                    "Do not forget to put {file_name} in C:\\Program Files (x86)\\Citrix\\ICA Client\\ !!!!!!"
+                );
+
+                svc::register(&path, file_name);
             }
-
-            if !path.is_file() {
-                eprintln!("given path is not a file");
-                return;
-            }
-
-            let path = if path.is_absolute() {
-                path::PathBuf::from(path)
-            } else {
-                let curdir = env::current_dir().expect("invalid current dir");
-                curdir.join(path)
-            };
-
-            let file_name = path.file_name().unwrap().to_str().unwrap();
-
-            let path = path.as_os_str().to_str().unwrap();
-
-            println!("DLL path = {path}");
-            println!(
-                "Do not forget to put {file_name} in C:\\Program Files (x86)\\Citrix\\ICA Client\\ !!!!!!"
-            );
-
-            svc::register(path, file_name);
         }
-        (Operation::Unregister, Mode::Svc) => svc::unregister(),
+        (Operation::Unregister { .. }, Mode::Svc) => svc::unregister(),
     }
 }
