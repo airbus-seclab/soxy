@@ -252,10 +252,6 @@ fn main_res(channel_name: [ffi::c_char; 8]) -> Result<(), Error> {
         }
     }
 
-    let libs = vc::Libraries::load();
-
-    let vc = vc::GenericChannel::load(&libs)?;
-
     let (backend_to_frontend_send, backend_to_frontend_receive) =
         crossbeam_channel::bounded(TO_VC_CHANNEL_SIZE);
     let (frontend_to_backend_send, frontend_to_backend_receive) = crossbeam_channel::unbounded();
@@ -290,17 +286,38 @@ fn main_res(channel_name: [ffi::c_char; 8]) -> Result<(), Error> {
         })
         .unwrap();
 
-    let channel = sync::RwLock::new(None);
-
+    // The VDI virtual channel library (Citrix `wfapi`, Horizon
+    // `vdp_rdpvcbridge`, XRDP `xrdpapi`) is not necessarily loadable when soxy
+    // starts: the agent providing it can be installed after us, and on Windows
+    // it can even be missing until a session is established. Keep retrying
+    // instead of bailing out: returning here makes the `soxy` binary exit
+    // immediately, its console window flashing and closing (and the log along
+    // with it), while the DLL flavour would just silently stop working.
     loop {
-        run(
-            channel_name,
-            &vc,
-            &channel,
-            &frontend_to_backend_send,
-            &backend_to_frontend_receive,
-        );
-        thread::sleep(time::Duration::from_secs(2));
+        let libs = vc::Libraries::load();
+
+        let vc = match vc::GenericChannel::load(&libs) {
+            Ok(vc) => vc,
+            Err(e) => {
+                common::error!("no virtual channel library loaded: {e}");
+                common::error!("retrying in 5 seconds (is the VDI agent running?)");
+                thread::sleep(time::Duration::from_secs(5));
+                continue;
+            }
+        };
+
+        let channel = sync::RwLock::new(None);
+
+        loop {
+            run(
+                channel_name,
+                &vc,
+                &channel,
+                &frontend_to_backend_send,
+                &backend_to_frontend_receive,
+            );
+            thread::sleep(time::Duration::from_secs(2));
+        }
     }
 }
 
