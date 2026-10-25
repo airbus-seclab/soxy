@@ -6,6 +6,7 @@ TARGETS_FRONTEND ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux
 TARGETS_BACKEND ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
 TARGETS_STANDALONE ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
 TARGETS_WIN7_BACKEND ?= x86_64-win7-windows-gnu
+TARGETS_WIN7_32BIT_BACKEND ?= i686-win7-windows-gnu
 TARGETS_SOXYREG ?= i686-pc-windows-gnu x86_64-pc-windows-gnu
 
 RELEASE_DIR := release
@@ -13,6 +14,33 @@ DEBUG_DIR := debug
 
 BACKEND_RELEASE_RUST_FLAGS := --remap-path-prefix ${HOME}=/foo -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort -C target-feature=+crt-static
 BACKEND_RELEASE_BUILD_FLAGS := -Z build-std=std,panic_abort
+
+# `build-win7` compiles with the rustc that `win7-rustc` builds from sources
+# (see `win7-rustc/bootstrap.toml`). That compiler differs from the nightly one
+# used for the other targets, so `BACKEND_RELEASE_RUST_FLAGS` cannot be reused
+# as is:
+#
+#   * it is built from a release tag, hence runs on the release channel: the
+#     `-Z` options are rejected, and so is `-Cpanic=immediate-abort` which
+#     requires `-Zunstable-options`;
+#   * it already ships the `std` for both Win7 targets, so `-Z build-std` would
+#     only rebuild it needlessly.
+#
+# Only stable flags are used below, which keeps the Win7 build in line with
+# `BACKEND_RELEASE_RUST_FLAGS` for everything the Win7 compiler does support.
+# `+crt-static` is the important one: without it the artifacts depend on
+# `libgcc_s_*-1.dll` and `libwinpthread-1.dll`, which the VDI agent process
+# loading `soxy.dll` has no reason to be able to find.
+#
+# The library and the binary stay two variables (the `build-win7` recipe builds
+# them separately) even though they currently share the same flags.
+BACKEND_RELEASE_LIB_RUST_FLAGS := --remap-path-prefix ${HOME}=/foo -C target-feature=+crt-static
+BACKEND_RELEASE_BIN_RUST_FLAGS := $(BACKEND_RELEASE_LIB_RUST_FLAGS)
+
+# `soxyreg` is built with the nightly toolchain, so the `-Z` options are
+# available, but without `BACKEND_RELEASE_BUILD_FLAGS` (no `-Z build-std`).
+# `+crt-static` is the important part: `soxyreg.exe` is handed over to users.
+SOXYREG_RELEASE_RUST_FLAGS := --remap-path-prefix ${HOME}=/foo -Zlocation-detail=none -C target-feature=+crt-static
 
 TOOLCHAIN_FRONTEND_DEBUG ?= stable
 TOOLCHAIN_FRONTEND_RELEASE ?= stable
@@ -134,6 +162,33 @@ win7: build-win7
 		done ; \
 	done
 
+# Same as `win7` but restricted to the 32 bits (i686) Windows 7 backend.
+# `win7-32bit-release` is an alias of `win7-32bit`, so that both profiles can
+# be built with the same `win7-32bit-<profile>` recipe.
+.PHONY: win7-32bit win7-32bit-release
+win7-32bit win7-32bit-release:
+	$(MAKE) win7 TARGETS_WIN7_BACKEND="$(TARGETS_WIN7_32BIT_BACKEND)"
+
+.PHONY: win7-debug
+win7-debug: build-win7-debug
+	@for t in $(TARGETS_WIN7_BACKEND) ; do \
+		for f in backend/target/$$t/debug/*soxy{,.dll,.exe,.so} ; do \
+			if [[ -f "$$f" ]] ; then \
+				mkdir -p $(DEBUG_DIR)/backend/$$t && \
+				cp "$$f" $(DEBUG_DIR)/backend/$$t/ ; \
+			fi ; \
+		done ; \
+	done
+
+# Debug flavour of `win7-32bit`: the backend is built without the release
+# optimizations and with the `log` feature, which turns every
+# `common::{trace,debug,info,warn,error}!` into an actual log line. That is the
+# build to use when diagnosing why soxy does not talk to the VDI (the release
+# one strips the logs away).
+.PHONY: win7-32bit-debug
+win7-32bit-debug:
+	$(MAKE) win7-debug TARGETS_WIN7_BACKEND="$(TARGETS_WIN7_32BIT_BACKEND)"
+
 .PHONY: distclean
 distclean: clean
 	@rm -Rf ${RELEASE_DIR} ${DEBUG_DIR}
@@ -205,6 +260,24 @@ build-win7:
 		(cd backend && \
 		 RUSTFLAGS="$(BACKEND_RELEASE_BIN_RUST_FLAGS)" \
 		 cargo +$(TOOLCHAIN_WIN7_BACKEND) build --bins --release --features $(FEATURES_VC),$(FEATURES_SERVICES) --target $$t \
+		) ; \
+	done
+
+.PHONY: build-win7-debug
+build-win7-debug:
+	@echo "Checking the backend toolchain for a Win7 target"
+	$(MAKE) -C $(TOOLCHAIN_WIN7_RUST_DIR)   \
+		TAG=$(TOOLCHAIN_WIN7_TAG)           \
+		TOOLCHAIN=$(TOOLCHAIN_WIN7_BACKEND) \
+		TARGETS="$(TARGETS_WIN7_BACKEND)"
+	@for t in $(TARGETS_WIN7_BACKEND) ; do  \
+		echo ; echo "# Building debug backend library ($(VC)) ($(SERVICES)) for $$t with $(TOOLCHAIN_WIN7_BACKEND)" ; echo ; \
+		(cd backend && \
+		 cargo +$(TOOLCHAIN_WIN7_BACKEND) build --lib --features log,$(FEATURES_VC),$(FEATURES_SERVICES) --target $$t \
+		) || exit 1 ; \
+		echo ; echo "# Building debug backend binary ($(VC)) ($(SERVICES)) for $$t with $(TOOLCHAIN_WIN7_BACKEND)" ; echo ; \
+		(cd backend && \
+		 cargo +$(TOOLCHAIN_WIN7_BACKEND) build --bins --features log,$(FEATURES_VC),$(FEATURES_SERVICES) --target $$t \
 		) ; \
 	done
 
