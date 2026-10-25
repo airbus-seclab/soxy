@@ -252,9 +252,13 @@ to `/usr/lib/omnissa/rdpvcbridge/`.
 
 ##### On Windows
 
-Register the `frontend` library for automatic loading by VMware
-Horizon client. It is mandatory to use the same architecture version
-(*i.e.* 32/64 bit version from
+Two different mechanisms are involved, depending on the client and on the
+display protocol.
+
+**For the Windows native RDP client (`mstsc`), and for VMware Horizon Client
+when the pool uses the *Microsoft RDP* display protocol**, register the library
+as an RDS AddIn with `soxyreg`. It is mandatory to use the same architecture
+version (*i.e.* 32/64 bit version from
 `i686-pc-windows-gnu`/x86_64-pc-windows-gnu) of `soxyreg.exe` than for
 `soxy.dll`?
 
@@ -281,6 +285,72 @@ soxyreg.exe svc unregister
 ```bash
 soxyreg.exe dvc unregister
 ```
+
+**For VMware Horizon Client using PCoIP or Blast Extreme**, none of the above
+applies: in that mode nothing loads `mstscax.dll`, so the RDS AddIn registry is
+never read and `soxyreg svc register` has no effect at all. The library must be
+registered in the Horizon Client own list of virtual channel DLLs instead,
+which is what `soxyreg horizon` does:
+
+```bash
+# from an elevated prompt
+soxyreg.exe horizon register C:\path\to\frontend\x86_64-pc-windows-gnu\soxy.dll
+soxyreg.exe horizon unregister C:\path\to\frontend\x86_64-pc-windows-gnu\soxy.dll
+```
+
+It writes (and removes) the `VirtualChannelDLLs` `REG_SZ` value in
+`HKLM\SOFTWARE\VMware, Inc.\VMware VDM\Client`, in **both** registry views
+(`KEY_WOW64_64KEY` and `KEY_WOW64_32KEY`), so the outcome does not depend on the
+bitness of `soxyreg` itself. The value is a comma separated list of
+`DLL path[,{GUID}]` entries; registering appends ours, unregistering removes it
+(and deletes the value altogether when nothing is left). Doing it by hand
+amounts to the same thing:
+
+```bash
+reg add "HKLM\SOFTWARE\VMware, Inc.\VMware VDM\Client" /v VirtualChannelDLLs /t REG_SZ \
+  /d "...,C:\path\to\frontend\x86_64-pc-windows-gnu\soxy.dll" /f
+```
+
+Three gotchas, all of them silent when missed:
+
+* the architecture must match the process that actually loads the plugins,
+  which is `vmware-remotemks.exe`, **not** `vmware-view.exe` (that one is just a
+  launcher). `vmware-remotemks.exe` is 64-bit even when the Horizon Client is
+  installed as 32-bit, so the `x86_64-pc-windows-gnu` build is the right one in
+  most cases. That build links `libgcc`/`libwinpthread` statically, no extra
+  runtime DLL is required;
+* the client must be restarted completely (system tray included), reconnecting
+  the session is not enough;
+* the frontend and the backend do **not** need to share the same architecture:
+  the virtual channel only carries bytes. A 64-bit frontend works fine with a
+  32-bit backend.
+
+To confirm the frontend really made it in, check the log file configured in
+`soxy.toml` (see below): `CALLED VirtualChannelEntry` followed by the six
+`binding ... clients on 127.0.0.1:...` lines and
+`(control channel) changing to OPENED state` means the plugin is loaded and the
+channel is up.
+
+##### Configuration file on Windows
+
+soxy reads its configuration from `%APPDATA%\soxy.toml` (`dirs::config_dir()`).
+Be careful when editing it: Windows paths must either use forward slashes or be
+written as TOML literal strings, because `\U` (as in `C:\Users`) is not a valid
+TOML escape sequence and makes the whole file fail to parse. A parse failure is
+completely silent: `bootstrap()` gives up before `AllocConsole()` is called, so
+neither a console window nor a log file is produced, and the host simply sees
+the plugin return `FALSE`.
+
+```toml
+ip = "127.0.0.1"
+
+[log]
+level = "TRACE"
+file = 'C:\Users\me\soxy-frontend.log'
+```
+
+Since the Horizon Client has no console to attach to, always set `log.file` to
+get something to read when troubleshooting.
 
 
 #### For FreeRDP and Remmina (Linux)
