@@ -106,13 +106,12 @@ fn control_handler(mut stream: rdp::RdpStream<'_>) -> Result<(), io::Error> {
                 } else {
                     cwd.join(path)
                 };
-                if path.exists() {
-                    protocol::ControlResponse::Error(450)
-                } else {
-                    protocol::ControlResponse::Data(protocol::DataCommand::Stor(
-                        path.display().to_string(),
-                    ))
-                }
+                // RFC 959: STOR creates the file if it does not exist and
+                // replaces it if it does. The data handler opens it with
+                // truncate(true) so an existing file is fully overwritten.
+                protocol::ControlResponse::Data(protocol::DataCommand::Stor(
+                    path.display().to_string(),
+                ))
             }
             protocol::ControlCommand::User => protocol::ControlResponse::Ok(331, None),
         };
@@ -198,7 +197,7 @@ fn data_handler(mut stream: rdp::RdpStream<'_>) -> Result<(), io::Error> {
             let path = path::PathBuf::from(path);
             let file = fs::File::options()
                 .create(true)
-                .truncate(false)
+                .truncate(true)
                 .write(true)
                 .open(path)?;
             let mut file = io::BufWriter::new(file);
