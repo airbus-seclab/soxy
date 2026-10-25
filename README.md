@@ -509,6 +509,29 @@ If the DLL is loaded by a real binary/application, soxy will remain active until
 the binary/application exits; you do not have to execute anything in the
 library, everything will be done automatically at loading time.
 
+#### On VMware Horizon
+
+The backend detects the VDI agent and picks the matching virtual channel API:
+`WTSVirtualChannelOpen` for native RDP, `WFVirtualChannel*` for Citrix, and
+`VDP_VirtualChannel*` from `vdp_rdpvcbridge.dll` for VMware Horizon.
+
+Two Horizon specific notes:
+
+* the backend must match the architecture of the **remote** machine (the
+  frontend must match the *client*, see the frontend section above). A 32-bit
+  Horizon agent needs the `i686-*` build;
+* with the **Blast Extreme** or **PCoIP** display protocol there is no RDS
+  session, so `WTSVirtualChannelOpen` fails with `ERROR_INVALID_FUNCTION` and
+  only the VMware API can be used.
+
+If the VMware API misbehaves, `SOXY_SVC_LOW` (set to anything non-empty) forces
+the plain WTS implementation instead. It will not work under Blast/PCoIP, but it
+is a useful escape hatch and a way to tell the two code paths apart:
+
+```bash
+SOXY_SVC_LOW=1 soxy.exe
+```
+
 
 ## 💻 Usage
 

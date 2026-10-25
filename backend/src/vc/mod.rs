@@ -48,6 +48,47 @@ type VirtualChannelWrite = unsafe extern "system" fn(
 type VirtualChannelClose =
     unsafe extern "system" fn(hchannelhandle: ws::Win32::Foundation::HANDLE) -> ws::core::BOOL;
 
+// VMware's `vdp_rdpvcbridge.dll` exports `VDP_VirtualChannel*` as plain C++
+// functions, hence `__cdecl`: the *caller* cleans the stack. Citrix's `WFAPI`
+// and the WTS ones are `WINAPI`, i.e. `__stdcall`: the *callee* cleans it.
+//
+// Mixing the two up does not break the call itself: the arguments are pushed
+// the same way and the return value comes back in `%eax`. What breaks is
+// `%esp`, which ends up off by the size of the arguments. rustc keeps a frame
+// pointer on `i686-pc-windows-gnu`, so the code following the call keeps
+// working (locals are addressed through `%ebp`) and the crash only shows up
+// later. The epilogue is a bare `pop %ebp; ret` with no `mov %esp, %ebp`
+// beforehand, so the saved frame pointer and the return address are then read
+// from the wrong place and the process dies with an access violation exactly
+// as `open()` returns.
+#[cfg(feature = "svc")]
+type VirtualChannelOpenCdecl = unsafe extern "C" fn(
+    hserver: ws::Win32::Foundation::HANDLE,
+    sessionid: os::raw::c_uint,
+    pvirtualname: *mut os::raw::c_char,
+) -> ws::Win32::Foundation::HANDLE;
+
+#[cfg(feature = "svc")]
+type VirtualChannelReadCdecl = unsafe extern "C" fn(
+    hchannelhandle: ws::Win32::Foundation::HANDLE,
+    timeout: os::raw::c_ulong,
+    buffer: *mut os::raw::c_uchar,
+    buffersize: os::raw::c_ulong,
+    pbytesread: *mut os::raw::c_ulong,
+) -> ws::core::BOOL;
+
+#[cfg(feature = "svc")]
+type VirtualChannelWriteCdecl = unsafe extern "C" fn(
+    hchannelhandle: ws::Win32::Foundation::HANDLE,
+    buffer: *const os::raw::c_uchar,
+    length: os::raw::c_ulong,
+    pbyteswritten: *mut os::raw::c_ulong,
+) -> ws::core::BOOL;
+
+#[cfg(feature = "svc")]
+type VirtualChannelCloseCdecl =
+    unsafe extern "C" fn(hchannelhandle: ws::Win32::Foundation::HANDLE) -> ws::core::BOOL;
+
 pub enum Error {
     NoLibraryFound,
     LibraryLoading(libloading::Error),
@@ -106,6 +147,17 @@ impl fmt::Display for Error {
     }
 }
 
+// Citrix ships one "Window Flow" API library per architecture: `wfapi64.dll`
+// for 64 bits processes and `wfapi32.dll` for 32 bits ones. A 32 bits process
+// cannot load the 64 bits library (and a pure 32 bits Windows 7 only provides
+// `wfapi32.dll`), so the name matching the target pointer width is tried
+// first. The other one is kept as a fallback.
+#[cfg(all(target_os = "windows", target_pointer_width = "64"))]
+const CITRIX_LIBRARIES: &[&str] = &["wfapi64", "wfapi32"];
+
+#[cfg(all(target_os = "windows", target_pointer_width = "32"))]
+const CITRIX_LIBRARIES: &[&str] = &["wfapi32", "wfapi64"];
+
 pub struct Libraries {
     #[cfg(all(feature = "svc", target_os = "windows"))]
     vdp_rdpvcbridge: Option<libloading::Library>,
@@ -140,7 +192,9 @@ impl Libraries {
         unsafe {
             common::trace!("trying to load Citrix library");
             #[cfg(target_os = "windows")]
-            let citrix = libloading::Library::new(libloading::library_filename("wfapi64")).ok();
+            let citrix = CITRIX_LIBRARIES
+                .iter()
+                .find_map(|name| libloading::Library::new(libloading::library_filename(name)).ok());
             #[cfg(not(target_os = "windows"))]
             let citrix = libloading::Library::new(libloading::library_filename("winsta")).ok();
 
