@@ -183,7 +183,7 @@ jobs:
       - name: Gather artifacts
         run: |
           mkdir -p artifacts
-          cp -R release artifacts/
+          cp -R debug release artifacts/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
