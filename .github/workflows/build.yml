@@ -157,6 +157,7 @@ jobs:
             # Gotcha: if any overrides are used below in the call to
             # `make win7`, they need to be reflected here as well.
             make --no-print-directory print-TOOLCHAIN_WIN7_BACKEND
+            make --no-print-directory -C win7-rustc print-RUST_SRC
             make --no-print-directory -C win7-rustc print-RUST_STAGE2_DIR
           } >> $GITHUB_ENV
 
@@ -164,9 +165,11 @@ jobs:
       # the CI runs
       - name: Cache Win7 rustc
         id: win7-rustc
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
-          path: ${{ env.RUST_STAGE2_DIR }}
+          path: |
+            ${{ env.RUST_SRC }}
+            ${{ env.RUST_STAGE2_DIR }}
           key: |
             ${{ runner.os }}-rust-toolchain-${{ env.TOOLCHAIN_WIN7_BACKEND }}
 
