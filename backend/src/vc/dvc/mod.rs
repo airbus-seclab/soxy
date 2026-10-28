@@ -1,9 +1,16 @@
 use crate::vc;
-use std::{ffi, ops};
+use std::{ffi, ops, os};
+use windows_sys as ws;
 
 #[cfg(target_os = "windows")]
 mod wts;
 mod xrdp;
+
+type VirtualChannelOpenEx = unsafe extern "system" fn(
+    sessionid: os::raw::c_uint,
+    pvirtualname: *mut os::raw::c_char,
+    flags: os::raw::c_uint,
+) -> ws::Win32::Foundation::HANDLE;
 
 pub enum Dvc<'a> {
     Xrdp(xrdp::Dvc<'a>),
@@ -21,7 +28,7 @@ impl<'a> vc::VirtualChannel<'a> for Dvc<'a> {
         res
     }
 
-    fn open(&self, name: [ffi::c_char; 8]) -> Result<Self::Handle, vc::Error> {
+    fn open(&'a self, name: [ffi::c_char; 8]) -> Result<Self::Handle, vc::Error> {
         match self {
             Self::Xrdp(dvc) => dvc.open(name).map(Handle::Xrdp),
             #[cfg(target_os = "windows")]

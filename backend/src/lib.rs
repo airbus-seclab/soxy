@@ -296,17 +296,17 @@ fn main_res(channel_name: [ffi::c_char; 8]) -> Result<(), Error> {
     loop {
         let libs = vc::Libraries::load();
 
-        let vc = match vc::GenericChannel::load(&libs) {
-            Ok(vc) => vc,
+        let (channel, vc) = match vc::GenericChannel::load(&libs) {
+            Ok(vc) => (sync::RwLock::new(None), vc),
             Err(e) => {
                 common::error!("no virtual channel library loaded: {e}");
-                common::error!("retrying in 5 seconds (is the VDI agent running?)");
-                thread::sleep(time::Duration::from_secs(5));
+                common::error!("retrying in 2 seconds (is the VDI agent running?)");
+
+                thread::sleep(time::Duration::from_secs(2));
+
                 continue;
             }
         };
-
-        let channel = sync::RwLock::new(None);
 
         loop {
             run(
@@ -316,6 +316,7 @@ fn main_res(channel_name: [ffi::c_char; 8]) -> Result<(), Error> {
                 &frontend_to_backend_send,
                 &backend_to_frontend_receive,
             );
+
             thread::sleep(time::Duration::from_secs(2));
         }
     }

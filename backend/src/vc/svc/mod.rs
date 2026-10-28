@@ -1,5 +1,6 @@
 use crate::vc;
-use std::{ffi, ops};
+use std::{ffi, ops, os};
+use windows_sys as ws;
 
 #[cfg(not(target_os = "windows"))]
 mod high_linux;
@@ -12,6 +13,12 @@ mod low;
 use high_linux as high;
 #[cfg(target_os = "windows")]
 use high_windows as high;
+
+type VirtualChannelOpen = unsafe extern "system" fn(
+    hserver: ws::Win32::Foundation::HANDLE,
+    sessionid: os::raw::c_uint,
+    pvirtualname: *mut os::raw::c_char,
+) -> ws::Win32::Foundation::HANDLE;
 
 pub enum Svc<'a> {
     High(high::Svc<'a>),
@@ -43,7 +50,7 @@ impl<'a> vc::VirtualChannel<'a> for Svc<'a> {
         res
     }
 
-    fn open(&self, name: [ffi::c_char; 8]) -> Result<Self::Handle, vc::Error> {
+    fn open(&'a self, name: [ffi::c_char; 8]) -> Result<Self::Handle, vc::Error> {
         match self {
             Self::High(svc) => svc.open(name).map(Handle::High),
             #[cfg(target_os = "windows")]

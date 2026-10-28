@@ -521,12 +521,12 @@ Two Horizon specific notes:
   frontend must match the *client*, see the frontend section above). A 32-bit
   Horizon agent needs the `i686-*` build;
 * with the **Blast Extreme** or **PCoIP** display protocol there is no RDS
-  session, so `WTSVirtualChannelOpen` fails with `ERROR_INVALID_FUNCTION` and
-  only the VMware API can be used.
+  session, only the VMware API can be used.
 
-If the VMware API misbehaves, `SOXY_SVC_LOW` (set to anything non-empty) forces
-the plain WTS implementation instead. It will not work under Blast/PCoIP, but it
-is a useful escape hatch and a way to tell the two code paths apart:
+If the VMware API misbehaves, the global variable `SOXY_SVC_LOW` is checked 
+(set to anything non-empty) to force the plain WTS implementation instead.
+It will not work under Blasti Extreme/PCoIP, but it is a useful escape hatch
+and a way to tell the two code paths apart:
 
 ```bash
 SOXY_SVC_LOW=1 soxy.exe
