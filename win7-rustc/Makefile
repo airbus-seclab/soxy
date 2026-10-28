@@ -9,7 +9,7 @@ TAG ?= 1.87.0
 TOOLCHAIN ?= win7-$(TAG)
 
 HOST ?= $(shell rustc -vV | grep "^host:" | awk '{print $$2}')
-TARGETS ?= x86_64-win7-windows-gnu
+TARGETS ?= i686-win7-windows-gnu x86_64-win7-windows-gnu
 
 # Rustc git repo
 RUST_GIT ?= https://github.com/rust-lang/rust.git

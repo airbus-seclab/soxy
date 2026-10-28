@@ -157,24 +157,18 @@ jobs:
             # Gotcha: if any overrides are used below in the call to
             # `make win7`, they need to be reflected here as well.
             make --no-print-directory print-TOOLCHAIN_WIN7_BACKEND
-            make --no-print-directory print-TARGETS_WIN7_BACKEND
-            make --no-print-directory print-TARGETS_WIN7_32BIT_BACKEND
             make --no-print-directory -C win7-rustc print-RUST_STAGE2_DIR
           } >> $GITHUB_ENV
 
       # Use a cache action to avoid rebuilding the compiler every time
-      # the CI runs. Both targets are part of the key: the win7-rustc
-      # build target skips the compiler build as soon as a toolchain
-      # with the right name is registered, and a cached compiler only
-      # ships the standard libraries of the targets it was built for,
-      # so the key has to change whenever the target list changes.
+      # the CI runs
       - name: Cache Win7 rustc
         id: win7-rustc
         uses: actions/cache@v5
         with:
           path: ${{ env.RUST_STAGE2_DIR }}
           key: |
-            ${{ runner.os }}-rust-toolchain-${{ env.TOOLCHAIN_WIN7_BACKEND }}-${{ env.TARGETS_WIN7_BACKEND }}-${{ env.TARGETS_WIN7_32BIT_BACKEND }}
+            ${{ runner.os }}-rust-toolchain-${{ env.TOOLCHAIN_WIN7_BACKEND }}
 
       # If the cache was hit, register the cached compiler with rustup
       - if: ${{ steps.win7-rustc.outputs.cache-hit == 'true' }}
@@ -182,14 +176,9 @@ jobs:
         run: |
           make -C win7-rustc register-toolchain \
             TOOLCHAIN=${{ env.TOOLCHAIN_WIN7_BACKEND }}
-
-      # Both Win7 backends are built: the 64 bits one (the default
-      # TARGETS_WIN7_BACKEND) and the 32 bits one, which is the only
-      # flavour a pure 32 bits Windows 7 agent can load.
+ 
       - name: Build Win7 release
-        run: >
-          make setup win7
-          TARGETS_WIN7_BACKEND="${{ env.TARGETS_WIN7_BACKEND }} ${{ env.TARGETS_WIN7_32BIT_BACKEND }}"
+        run: make setup win7
 
       - name: Gather artifacts
         run: |
