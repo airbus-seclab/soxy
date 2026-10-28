@@ -5,7 +5,7 @@ VC ?= dvc svc
 TARGETS_FRONTEND ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
 TARGETS_BACKEND ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
 TARGETS_STANDALONE ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
-TARGETS_WIN7_BACKEND ?= x86_64-win7-windows-gnu
+TARGETS_WIN7_BACKEND ?= i686-win7-windows-gnu x86_64-win7-windows-gnu
 TARGETS_SOXYREG ?= i686-pc-windows-gnu x86_64-pc-windows-gnu
 
 RELEASE_DIR := release
@@ -20,7 +20,7 @@ TOOLCHAIN_BACKEND_DEBUG ?= stable
 TOOLCHAIN_BACKEND_RELEASE ?= nightly
 TOOLCHAIN_STANDALONE_DEBUG ?= stable
 TOOLCHAIN_STANDALONE_RELEASE ?= stable
-TOOLCHAIN_WIN7_TAG ?= 1.98.0
+TOOLCHAIN_WIN7_TAG ?= 1.99.1
 TOOLCHAIN_WIN7_BACKEND ?= win7-$(TOOLCHAIN_WIN7_TAG)
 TOOLCHAIN_WIN7_RUST_DIR = win7-rustc
 TOOLCHAIN_SOXYREG_DEBUG ?= stable
@@ -124,12 +124,18 @@ debug: build-debug
 	done
 
 .PHONY: win7
-win7: build-win7
+win7: build-release-win7 build-debug-win7
 	@for t in $(TARGETS_WIN7_BACKEND) ; do \
 		for f in backend/target/$$t/release/*soxy{,.dll,.exe,.so} ; do \
 			if [[ -f "$$f" ]] ; then \
 				mkdir -p $(RELEASE_DIR)/backend/$$t && \
 				cp "$$f" $(RELEASE_DIR)/backend/$$t/ ; \
+			fi ; \
+		done ; \
+		for f in backend/target/$$t/debug/*soxy{,.dll,.exe,.so} ; do \
+			if [[ -f "$$f" ]] ; then \
+				mkdir -p $(DEBUG_DIR)/backend/$$t && \
+				cp "$$f" $(DEBUG_DIR)/backend/$$t/ ; \
 			fi ; \
 		done ; \
 	done
@@ -188,24 +194,28 @@ build-debug:
 		(cd soxyreg && cargo +$(TOOLCHAIN_SOXYREG_DEBUG) build --target $$t && cd ..) || exit 1 ; \
 	done
 
-.PHONY: build-win7
-build-win7:
+.PHONY: build-release-win7
+build-release-win7:
 	@echo "Checking the backend toolchain for a Win7 target"
 	$(MAKE) -C $(TOOLCHAIN_WIN7_RUST_DIR)   \
 		TAG=$(TOOLCHAIN_WIN7_TAG)           \
 		TOOLCHAIN=$(TOOLCHAIN_WIN7_BACKEND) \
 		TARGETS="$(TARGETS_WIN7_BACKEND)"
 	@for t in $(TARGETS_WIN7_BACKEND) ; do  \
-		echo ; echo "# Building release backend library ($(SERVICES)) for $$t with $(TOOLCHAIN_WIN7_BACKEND)" ; echo ; \
-		(cd backend && \
-		 RUSTFLAGS="$(BACKEND_RELEASE_LIB_RUST_FLAGS)" \
-		 cargo +$(TOOLCHAIN_WIN7_BACKEND) build --lib --release --features $(FEATURES_VC),$(FEATURES_SERVICES) --target $$t \
-		) || exit 1 ; \
-		echo ; echo "# Building release backend binary ($(SERVICES)) for $$t with $(TOOLCHAIN_WIN7_BACKEND)" ; echo ; \
-		(cd backend && \
-		 RUSTFLAGS="$(BACKEND_RELEASE_BIN_RUST_FLAGS)" \
-		 cargo +$(TOOLCHAIN_WIN7_BACKEND) build --bins --release --features $(FEATURES_VC),$(FEATURES_SERVICES) --target $$t \
-		) ; \
+		echo ; echo "# Building release backend ($(VC)) ($(SERVICES)) for $$t with $(TOOLCHAIN_WIN7_BACKEND)" ; echo ; \
+		(cd backend && RUSTFLAGS="$(BACKEND_RELEASE_RUST_FLAGS)" cargo +$(TOOLCHAIN_WIN7_BACKEND) build --release --features $(FEATURES_VC),$(FEATURES_SERVICES) --target $$t $(BACKEND_RELEASE_BUILD_FLAGS) && cd ..) || exit 1 ; \
+	done
+
+.PHONY: build-debug-win7
+build-debug-win7:
+	@echo "Checking the backend toolchain for a Win7 target"
+	$(MAKE) -C $(TOOLCHAIN_WIN7_RUST_DIR)   \
+		TAG=$(TOOLCHAIN_WIN7_TAG)           \
+		TOOLCHAIN=$(TOOLCHAIN_WIN7_BACKEND) \
+		TARGETS="$(TARGETS_WIN7_BACKEND)"
+	@for t in $(TARGETS_WIN7_BACKEND) ; do  \
+		echo ; echo "# Building debug backend ($(VC)) ($(SERVICES)) for $$t with $(TOOLCHAIN_WIN7_BACKEND)" ; echo ; \
+		(cd backend && cargo +$(TOOLCHAIN_WIN7_BACKEND) build --features log,$(FEATURES_VC),$(FEATURES_SERVICES) --target $$t && cd ..) || exit 1 ; \
 	done
 
 .PHONY: build-frontend-native
