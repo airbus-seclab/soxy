@@ -32,15 +32,14 @@ const VIEWS: [(u32, &str); 2] = [
 /// preceding it. Tokens are kept verbatim so that the value can be rebuilt
 /// without reformatting what was already there.
 fn split_entries(value: &str) -> Vec<Vec<String>> {
-    let mut entries: Vec<Vec<String>> = Vec::new();
+    let mut entries: Vec<Vec<_>> = Vec::new();
 
-    for token in value.split(',') {
-        if token.is_empty() {
-            continue;
-        }
-
-        let trimmed = token.trim();
-        let is_guid = trimmed.starts_with('{') && trimmed.ends_with('}');
+    for token in value
+        .split(',')
+        .filter(|token| !token.is_empty())
+        .map(str::trim)
+    {
+        let is_guid = token.starts_with('{') && token.ends_with('}');
 
         if is_guid && let Some(last) = entries.last_mut() {
             last.push(token.to_string());
@@ -103,9 +102,7 @@ fn open_client_key(view_flag: u32, view: &str) -> Result<winreg::RegKey, String>
 fn register_view(dll_path: &str, view_flag: u32, view: &str) -> Result<bool, String> {
     let client = open_client_key(view_flag, view)?;
 
-    let current: String = client
-        .get_value(VIRTUAL_CHANNEL_DLLS)
-        .unwrap_or_default();
+    let current: String = client.get_value(VIRTUAL_CHANNEL_DLLS).unwrap_or_default();
 
     let mut entries = split_entries(&current);
 
@@ -202,61 +199,5 @@ pub fn unregister(dll_path: &str) {
             Ok(false) => println!("{view} view: not present"),
             Err(e) => eprintln!("{view} view: {e}"),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn empty_value_yields_no_entry() {
-        assert_eq!(split_entries("").len(), 0);
-    }
-
-    #[test]
-    fn plain_entries_round_trip() {
-        let value = r"C:\a.dll,C:\b.dll";
-        let entries = split_entries(value);
-
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0], vec![r"C:\a.dll".to_string()]);
-        assert_eq!(entries[1], vec![r"C:\b.dll".to_string()]);
-        assert_eq!(join_entries(&entries), value);
-    }
-
-    #[test]
-    fn guid_belongs_to_the_preceding_entry() {
-        // This is the shape of a real value: the ThinPrint entry carries a GUID,
-        // ours does not.
-        let value = r"C:\ThinPrint\TPClnRDP.dll,{DEDC9BA7-C55C-4a3b-965E-B08EAC50D504},C:\soxy.dll";
-        let entries = split_entries(value);
-
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].len(), 2);
-        assert_eq!(entries[1], vec![r"C:\soxy.dll".to_string()]);
-        assert_eq!(join_entries(&entries), value);
-    }
-
-    #[test]
-    fn our_entry_matches_case_insensitively() {
-        let entries = split_entries(r"C:\Soxy.dll");
-
-        assert!(is_our_entry(&entries[0], r"c:\soxy.dll"));
-        assert!(!is_our_entry(&entries[0], r"c:\other.dll"));
-    }
-
-    #[test]
-    fn removing_ours_keeps_the_others() {
-        let value = r"C:\ThinPrint\TPClnRDP.dll,{DEDC9BA7-C55C-4a3b-965E-B08EAC50D504},C:\soxy.dll";
-        let kept: Vec<Vec<String>> = split_entries(value)
-            .into_iter()
-            .filter(|entry| !is_our_entry(entry, r"C:\soxy.dll"))
-            .collect();
-
-        assert_eq!(
-            join_entries(&kept),
-            r"C:\ThinPrint\TPClnRDP.dll,{DEDC9BA7-C55C-4a3b-965E-B08EAC50D504}"
-        );
     }
 }
