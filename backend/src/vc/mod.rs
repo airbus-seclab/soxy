@@ -9,20 +9,6 @@ mod dvc;
 #[cfg(feature = "svc")]
 mod svc;
 
-#[cfg(feature = "svc")]
-type VirtualChannelOpen = unsafe extern "system" fn(
-    hserver: ws::Win32::Foundation::HANDLE,
-    sessionid: os::raw::c_uint,
-    pvirtualname: *mut os::raw::c_char,
-) -> ws::Win32::Foundation::HANDLE;
-
-#[cfg(feature = "dvc")]
-type VirtualChannelOpenEx = unsafe extern "system" fn(
-    sessionid: os::raw::c_uint,
-    pvirtualname: *mut os::raw::c_char,
-    flags: os::raw::c_uint,
-) -> ws::Win32::Foundation::HANDLE;
-
 type VirtualChannelQuery = unsafe extern "system" fn(
     hchannelhandle: ws::Win32::Foundation::HANDLE,
     wtsvirtualclass: ws::Win32::System::RemoteDesktop::WTS_VIRTUAL_CLASS,
@@ -106,6 +92,14 @@ impl fmt::Display for Error {
     }
 }
 
+// Citrix ships one "Window Flow" API library per architecture: `wfapi64.dll`
+// for 64 bits processes and `wfapi32.dll` for 32 bits ones. A 32 bits process
+// cannot load the 64 bits library.
+#[cfg(all(target_os = "windows", target_pointer_width = "32"))]
+const CITRIX_LIBRARIES: [&str; 1] = ["wfapi32"];
+#[cfg(all(target_os = "windows", target_pointer_width = "64"))]
+const CITRIX_LIBRARIES: [&str; 2] = ["wfapi64", "wfapi32"];
+
 pub struct Libraries {
     #[cfg(all(feature = "svc", target_os = "windows"))]
     vdp_rdpvcbridge: Option<libloading::Library>,
@@ -140,7 +134,9 @@ impl Libraries {
         unsafe {
             common::trace!("trying to load Citrix library");
             #[cfg(target_os = "windows")]
-            let citrix = libloading::Library::new(libloading::library_filename("wfapi64")).ok();
+            let citrix = CITRIX_LIBRARIES
+                .iter()
+                .find_map(|name| libloading::Library::new(libloading::library_filename(name)).ok());
             #[cfg(not(target_os = "windows"))]
             let citrix = libloading::Library::new(libloading::library_filename("winsta")).ok();
 
@@ -192,7 +188,7 @@ impl Libraries {
 pub trait VirtualChannel<'a>: Sized + Send + Sync {
     type Handle: Handle;
     fn load(libs: &'a Libraries) -> Result<Self, Error>;
-    fn open(&self, name: [ffi::c_char; 8]) -> Result<Self::Handle, Error>;
+    fn open(&'a self, name: [ffi::c_char; 8]) -> Result<Self::Handle, Error>;
 }
 
 pub struct GenericChannel<'a> {
@@ -236,7 +232,7 @@ impl<'a> VirtualChannel<'a> for GenericChannel<'a> {
         })
     }
 
-    fn open(&self, name: [ffi::c_char; 8]) -> Result<Self::Handle, Error> {
+    fn open(&'a self, name: [ffi::c_char; 8]) -> Result<Self::Handle, Error> {
         #[cfg(not(feature = "svc"))]
         let svc: Result<Self::Handle, _> = Err(Error::NoLibraryFound);
         #[cfg(feature = "svc")]

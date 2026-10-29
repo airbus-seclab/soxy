@@ -3,7 +3,7 @@ use std::{ffi, io, ops, os, ptr, thread};
 use windows_sys as ws;
 
 pub struct Dvc<'a> {
-    open_ex: libloading::Symbol<'a, vc::VirtualChannelOpenEx>,
+    open_ex: libloading::Symbol<'a, super::VirtualChannelOpenEx>,
     query: libloading::Symbol<'a, vc::VirtualChannelQuery>,
     read: libloading::Symbol<'a, vc::VirtualChannelRead>,
     write: libloading::Symbol<'a, vc::VirtualChannelWrite>,

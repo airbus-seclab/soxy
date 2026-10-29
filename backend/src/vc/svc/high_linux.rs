@@ -137,7 +137,7 @@ pub enum Svc<'a> {
         event_close_connection: libloading::Symbol<'a, WsCloseConnection>,
     },
     Standard {
-        open: libloading::Symbol<'a, vc::VirtualChannelOpen>,
+        open: libloading::Symbol<'a, super::VirtualChannelOpen>,
         query: libloading::Symbol<'a, vc::VirtualChannelQuery>,
         read: libloading::Symbol<'a, vc::VirtualChannelRead>,
         write: libloading::Symbol<'a, vc::VirtualChannelWrite>,

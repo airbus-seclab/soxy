@@ -1,5 +1,6 @@
 use crate::vc;
-use std::{ffi, ops};
+use std::{ffi, ops, os};
+use windows_sys as ws;
 
 #[cfg(not(target_os = "windows"))]
 mod high_linux;
@@ -13,6 +14,12 @@ use high_linux as high;
 #[cfg(target_os = "windows")]
 use high_windows as high;
 
+type VirtualChannelOpen = unsafe extern "system" fn(
+    hserver: ws::Win32::Foundation::HANDLE,
+    sessionid: os::raw::c_uint,
+    pvirtualname: *mut os::raw::c_char,
+) -> ws::Win32::Foundation::HANDLE;
+
 pub enum Svc<'a> {
     High(high::Svc<'a>),
     #[cfg(target_os = "windows")]
@@ -23,13 +30,27 @@ impl<'a> vc::VirtualChannel<'a> for Svc<'a> {
     type Handle = Handle<'a>;
 
     fn load(libs: &'a vc::Libraries) -> Result<Self, vc::Error> {
-        let res = high::Svc::load(libs).map(Self::High);
+        // The "high" implementations (Citrix `WFVirtualChannel*`, Horizon
+        // `VDP_VirtualChannel*`) are preferred over the plain WTS one, but the
+        // Horizon one is not always usable: on VMware Horizon Agent,
+        // `VDP_VirtualChannelOpen` returns a handle and then corrupts the caller
+        // stack, so the process dies with an access violation once `open()` has
+        // returned. `SOXY_SVC_LOW` (set to anything non-empty) skips the high
+        // implementations and uses `WTSVirtualChannelOpen` instead.
+        let force_low = std::env::var_os("SOXY_SVC_LOW").is_some_and(|v| !v.is_empty());
+
+        let res = if force_low {
+            common::debug!("SOXY_SVC_LOW is set, skipping the high implementations");
+            Err(vc::Error::NoLibraryFound)
+        } else {
+            high::Svc::load(libs).map(Self::High)
+        };
         #[cfg(target_os = "windows")]
         let res = res.or(low::Svc::load(libs).map(Self::Low));
         res
     }
 
-    fn open(&self, name: [ffi::c_char; 8]) -> Result<Self::Handle, vc::Error> {
+    fn open(&'a self, name: [ffi::c_char; 8]) -> Result<Self::Handle, vc::Error> {
         match self {
             Self::High(svc) => svc.open(name).map(Handle::High),
             #[cfg(target_os = "windows")]
