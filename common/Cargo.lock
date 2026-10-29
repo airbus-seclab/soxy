@@ -30,7 +30,7 @@ dependencies = [
 
 [[package]]
 name = "common"
-version = "4.8.4"
+version = "4.9.0"
 dependencies = [
  "copyrs",
  "crossbeam-channel",

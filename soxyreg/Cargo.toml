@@ -1,6 +1,6 @@
 [package]
 name = "soxyreg"
-version = "4.8.4"
+version = "4.9.0"
 edition = "2024"
 authors = ["Airbus Seclab <seclab+soxy@airbus.com>"]
 repository = "https://github.com/airbus-seclab/soxy"
