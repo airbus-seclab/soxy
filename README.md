@@ -252,9 +252,13 @@ to `/usr/lib/omnissa/rdpvcbridge/`.
 
 ##### On Windows
 
-Register the `frontend` library for automatic loading by VMware
-Horizon client. It is mandatory to use the same architecture version
-(*i.e.* 32/64 bit version from
+Two different mechanisms are involved, depending on the client and on the
+display protocol.
+
+**For the Windows native RDP client (`mstsc`), and for VMware Horizon Client
+when the pool uses the *Microsoft RDP* display protocol**, register the library
+as an RDS AddIn with `soxyreg`. It is mandatory to use the same architecture
+version (*i.e.* 32/64 bit version from
 `i686-pc-windows-gnu`/x86_64-pc-windows-gnu) of `soxyreg.exe` than for
 `soxy.dll`?
 
@@ -282,6 +286,28 @@ soxyreg.exe svc unregister
 soxyreg.exe dvc unregister
 ```
 
+**For VMware Horizon Client using PCoIP or Blast Extreme**, none of
+the above applies: in that mode nothing loads `mstscax.dll`, so the
+RDP Virtual Channel entries are never read. The library must be
+registered in the Horizon Client own list of Virtual Channel DLLs
+instead:
+
+To install:
+
+```bash
+soxyreg.exe horizon register soxy.dll
+```
+
+To uninstall:
+
+```bash
+soxyreg.exe horizon unregister soxy.dll
+```
+
+It adds/removes the `VirtualChannelDLLs` `REG_SZ` value in
+`HKLM\SOFTWARE\VMware, Inc.\VMware VDM\Client`, in **both** registry
+views (`KEY_WOW64_64KEY` and `KEY_WOW64_32KEY`), so the outcome does
+not depend on the bitness of `soxyreg` itself.
 
 #### For FreeRDP and Remmina (Linux)
 
@@ -406,9 +432,9 @@ Linux VDA.
 
 When the `frontend` of soxy starts, it will look for a configuration
 file at `$HOME/.config/soxy.toml` on Linux and macOS and at
-`{FOLDERID_Profile}/soxy.toml` on Windows. If no configuration file is
-found, it will be created with default values. Here is a complete
-example of configuration file:
+`{FOLDERID_Profile}\soxy.toml` (or `%APPDATA%\soxy.toml`) on
+Windows. If no configuration file is found, it will be created with
+default values. Here is a complete example of configuration file:
 
 ```toml
 #Default virtual channel name.

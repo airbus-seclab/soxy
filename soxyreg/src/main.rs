@@ -2,6 +2,7 @@ use clap::Parser;
 use std::{env, path};
 
 mod dvc;
+mod horizon;
 mod svc;
 
 #[derive(Parser)]
@@ -16,77 +17,91 @@ struct Args {
 #[derive(clap::ValueEnum, Clone)]
 enum Mode {
     Dvc,
+    Horizon,
     Svc,
 }
 
 #[derive(clap::Subcommand)]
 enum Operation {
-    Register { dll: String },
-    Unregister,
+    Register {
+        dll: String,
+    },
+    /// The DLL path is only needed (and only used) by the `horizon` mode: it
+    /// tells which entry to remove from the Horizon Client
+    /// `VirtualChannelDLLs` list.
+    Unregister {
+        dll: Option<String>,
+    },
+}
+
+/// Validates the DLL path given on the command line and makes it absolute, as
+/// the registry consumers expect.
+fn absolute_dll_path(dll: &str) -> Result<String, String> {
+    let path = path::Path::new(dll);
+
+    if !path.exists() {
+        return Err("invalid DLL path".to_string());
+    }
+
+    if !path.is_file() {
+        return Err("given path is not a file".to_string());
+    }
+
+    let path = if path.is_absolute() {
+        path::PathBuf::from(path)
+    } else {
+        let curdir = env::current_dir().map_err(|e| format!("invalid current dir: {e}"))?;
+        curdir.join(path)
+    };
+
+    path.as_os_str()
+        .to_str()
+        .map(str::to_string)
+        .ok_or_else(|| "DLL path is not valid UTF-8".to_string())
 }
 
 fn main() {
     let args = Args::parse();
 
-    match (args.operation, args.mode) {
-        (Operation::Register { dll }, Mode::Dvc) => {
-            let path = path::Path::new(&dll);
-
-            if !path.exists() {
-                eprintln!("invalid DLL path");
-                return;
-            }
-
-            if !path.is_file() {
-                eprintln!("given path is not a file");
-                return;
-            }
-
-            let path = if path.is_absolute() {
-                path::PathBuf::from(path)
-            } else {
-                let curdir = env::current_dir().expect("invalid current dir");
-                curdir.join(path)
+    match args.operation {
+        Operation::Register { dll } => {
+            let dll = match absolute_dll_path(&dll) {
+                Ok(dll) => dll,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return;
+                }
             };
 
-            let path = path.as_os_str().to_str().unwrap();
+            match args.mode {
+                Mode::Dvc => dvc::register(&dll),
+                Mode::Horizon => horizon::register(&dll),
+                Mode::Svc => {
+                    let file_name = path::Path::new(&dll)
+                        .file_name()
+                        .and_then(std::ffi::OsStr::to_str)
+                        .unwrap_or("soxy.dll");
 
-            println!("DLL path = {path}");
+                    println!(
+                        "Do not forget to put {file_name} in C:\\Program Files (x86)\\Citrix\\ICA Client\\ !!!!!!"
+                    );
 
-            dvc::register(path);
-        }
-        (Operation::Unregister, Mode::Dvc) => dvc::unregister(),
-        (Operation::Register { dll }, Mode::Svc) => {
-            let path = path::Path::new(&dll);
-
-            if !path.exists() {
-                eprintln!("invalid DLL path");
-                return;
+                    svc::register(&dll, file_name);
+                }
             }
-
-            if !path.is_file() {
-                eprintln!("given path is not a file");
-                return;
-            }
-
-            let path = if path.is_absolute() {
-                path::PathBuf::from(path)
-            } else {
-                let curdir = env::current_dir().expect("invalid current dir");
-                curdir.join(path)
-            };
-
-            let file_name = path.file_name().unwrap().to_str().unwrap();
-
-            let path = path.as_os_str().to_str().unwrap();
-
-            println!("DLL path = {path}");
-            println!(
-                "Do not forget to put {file_name} in C:\\Program Files (x86)\\Citrix\\ICA Client\\ !!!!!!"
-            );
-
-            svc::register(path, file_name);
         }
-        (Operation::Unregister, Mode::Svc) => svc::unregister(),
+        Operation::Unregister { dll } => match args.mode {
+            Mode::Dvc => dvc::unregister(),
+            Mode::Horizon => {
+                let Some(dll) = dll else {
+                    eprintln!(
+                        "missing DLL path: it tells which entry to remove from the Horizon Client VirtualChannelDLLs list"
+                    );
+                    return;
+                };
+                horizon::unregister(&dll);
+            }
+            Mode::Svc => svc::unregister(),
+        },
     }
 }
