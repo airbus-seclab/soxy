@@ -138,7 +138,7 @@ where
                     'inner: loop {
                         match api::Chunk::can_deserialize_from(&buf[read.clone()]) {
                             None => {
-                                received_data.extend_from_slice(&buf[read.clone()]);
+                                received_data.extend_from_slice(&buf[read]);
                                 break 'inner;
                             }
                             Some(len) => {
