@@ -6,9 +6,14 @@ authors = ["Airbus Seclab <seclab+soxy@airbus.com>"]
 repository = "https://github.com/airbus-seclab/soxy"
 license-file = "../LICENSE"
 
-[dependencies]
-clap = { version = "4", features = ["derive"] }
-winreg = "0"
+[dependencies.clap]
+version = "4"
+default-features = false
+features = [ "derive", "help", "std", "suggestions", "usage" ]
+
+[dependencies.winreg]
+version = "0"
+default-features = false
 
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }
