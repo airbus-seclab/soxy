@@ -103,9 +103,9 @@ jobs:
 
       - name: Setup and build (llvm-mingw)
         run: |
-          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20260826/llvm-mingw-20260826-ucrt-ubuntu-22.04-x86_64.tar.xz
-          tar xaf llvm-mingw-20260826-ucrt-ubuntu-22.04-x86_64.tar.xz
-          PATH=$PATH:$(pwd)/llvm-mingw-20260826-ucrt-ubuntu-22.04-x86_64/bin \
+          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-ubuntu-22.04-x86_64.tar.xz
+          tar xaf llvm-mingw-20261104-ucrt-ubuntu-22.04-x86_64.tar.xz
+          PATH=$PATH:$(pwd)/llvm-mingw-20261104-ucrt-ubuntu-22.04-x86_64/bin \
             TARGETS_FRONTEND="i686-pc-windows-gnullvm x86_64-pc-windows-gnullvm" \
             TARGETS_BACKEND="i686-pc-windows-gnullvm x86_64-pc-windows-gnullvm" \
             TARGETS_STANDALONE="i686-pc-windows-gnullvm x86_64-pc-windows-gnullvm" \
